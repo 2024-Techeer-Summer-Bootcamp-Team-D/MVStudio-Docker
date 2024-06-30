@@ -1,0 +1,6 @@
+[submodule "MVStudio-Frontend"]
+	path = MVStudio-Frontend
+	url = https://github.com/2024-Techeer-Summer-Bootcamp-Team-D/MVStudio-Frontend.git
+[submodule "MVStudio-Backend"]
+	path = MVStudio-Backend
+	url = https://github.com/2024-Techeer-Summer-Bootcamp-Team-D/MVStudio-Backend.git
