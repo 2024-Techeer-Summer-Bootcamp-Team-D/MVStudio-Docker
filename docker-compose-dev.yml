@@ -62,6 +62,31 @@ services:
     networks:
       - mvs
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    user: "1000:1000"  # 비루트 사용자로 설정
+    command: >
+      sh -c "elasticsearch-plugin install analysis-nori &&
+             bin/elasticsearch"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mvs
+
   backend:
     container_name: MVStudio-Backend
     build:
@@ -72,22 +97,30 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - redis
-      - rabbitmq
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     networks:
       - mvs
     restart: always
     command: >
-      sh -c "sleep 5 && %
+      sh -c "
             python manage.py makemigrations &&
             python manage.py makemigrations member &&
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
+            python manage.py search_index --create &&
+            python manage.py search_index --rebuild -f&&
             python manage.py runserver 0.0.0.0:8000"
+            
 
 volumes:
   static_volume:
   build_folder:
+  es_data:
 
 networks:
   mvs:
