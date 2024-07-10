@@ -41,10 +41,11 @@ services:
 
 #  flower:
 #    image: mher/flower:0.9.7
-#    build:
-#      context: ./MVStudio-Backend
+#    volumes:
+#      - ./MVStudio-Backend:/MVStudio-Backend
+#    platform: linux/amd64
 #    working_dir: /MVStudio-Backend
-#    command: celery flower --port=5555 --broker=$CELERY_BROKER_URL
+#    command: celery flower -A config --port=5555 --broker=$CELERY_BROKER_URL
 #    ports:
 #      - "5555:5555"
 #    depends_on:
@@ -77,6 +78,33 @@ services:
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
             python manage.py runserver 0.0.0.0:8000"
+
+  frontend:
+    container_name: MVStudio-Frontend
+    build:
+      context: ./MVStudio-Frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./MVStudio-Frontend/:/MVStudio-Frontend
+      - build_folder:/MVStudio-Frontend/dist
+      - ./MVStudio-Frontend/node_modules/:/MVStudio-Frontend/node_modules
+    depends_on:
+      - backend
+    tty: true
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - build_folder:/var/www/frontend
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - mvs
 
 volumes:
   static_volume:
