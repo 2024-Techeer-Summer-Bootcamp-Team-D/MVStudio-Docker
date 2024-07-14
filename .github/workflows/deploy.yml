@@ -15,7 +15,7 @@ jobs:
     steps:
       # - uses: actions/checkout@v4
       - name: Run scripts in server
-        uses: team-d/ssh-action@main
+        uses: appleboy/ssh-action@master
         with:
           password: ${{ secrets.PASSWORD }}
           host: ${{ secrets.HOST }}
