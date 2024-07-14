@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 services:
   redis:
@@ -75,12 +75,16 @@ services:
       - es_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
-    user: "1000:1000"  # 비루트 사용자로 설정
+    user: "1000:1000" # 비루트 사용자로 설정
     command: >
       sh -c "elasticsearch-plugin install analysis-nori &&
              bin/elasticsearch"
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      test:
+        [
+          "CMD-SHELL",
+          'curl -s http://localhost:9200/_cluster/health | grep -vq ''"status":"red"''',
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -130,18 +134,33 @@ services:
     tty: true
 
   nginx:
+    container_name: MVStudio-Nginx
     build:
       context: ./nginx
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - build_folder:/var/www/frontend
       - ./nginx/logs:/var/log/nginx
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
     depends_on:
       - frontend
       - backend
     networks:
       - mvs
+
+  certbot:
+    container_name: certbot
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt #nginx컨테이너에 certbot컨테이너 연결
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - nginx
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   static_volume:
