@@ -27,7 +27,7 @@ services:
   celery:
     build:
       context: ./MVStudio-Backend
-    command: celery -A config worker --loglevel=info
+    command: celery -A config worker --loglevel=info --concurrency=2
     depends_on:
       - redis
       - rabbitmq
@@ -114,7 +114,7 @@ services:
             python manage.py migrate &&
             python manage.py search_index --create &&
             python manage.py search_index --rebuild -f&&
-            python manage.py runserver 0.0.0.0:8000"
+            gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
 
   frontend:
     container_name: MVStudio-Frontend
