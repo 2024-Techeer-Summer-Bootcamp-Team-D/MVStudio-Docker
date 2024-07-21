@@ -4,20 +4,20 @@ services:
   redis:
     image: redis:6
     ports:
-      - "6379:6379"
+      - '6379:6379'
     networks:
       - mvs
 
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - '5672:5672'
+      - '15672:15672'
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      test: ['CMD', 'rabbitmqctl', 'status']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -61,7 +61,7 @@ services:
     working_dir: /MVStudio-Backend
     command: celery flower --port=5555 --broker=$CELERY_BROKER_URL --broker-api=http://guest:guest@rabbitmq:15672/api/
     ports:
-      - "5555:5555"
+      - '5555:5555'
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -74,7 +74,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
     ulimits:
       memlock:
         soft: -1
@@ -82,13 +82,17 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     ports:
-      - "9200:9200"
-    user: "1000:1000"  # 비루트 사용자로 설정
+      - '9200:9200'
+    user: '1000:1000' # 비루트 사용자로 설정
     command: >
       sh -c "elasticsearch-plugin install analysis-nori &&
              bin/elasticsearch"
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      test:
+        [
+          'CMD-SHELL',
+          'curl -s http://localhost:9200/_cluster/health | grep -vq ''"status":"red"''',
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -103,7 +107,7 @@ services:
       - static_volume:/MVStudio-Backend/static
       - ./MVStudio-Backend:/MVStudio-Backend
     ports:
-      - "8000:8000"
+      - '8000:8000'
     depends_on:
       redis:
         condition: service_started
@@ -120,10 +124,10 @@ services:
             python manage.py makemigrations member &&
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
+            python manage.py migrate --fake &&
             python manage.py search_index --create &&
             python manage.py search_index --rebuild -f&&
             python manage.py runserver 0.0.0.0:8000"
-            
 
 volumes:
   static_volume:
