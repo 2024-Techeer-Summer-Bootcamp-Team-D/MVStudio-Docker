@@ -258,6 +258,18 @@ services:
       - mvs #같은 네트워크
     command: --config.file=/etc/alertmanager/alertmanager.yml --log.level=debug #설정파일 설정
 
+  rds-exporter:
+    container_name: MVStudio-rds-exporter
+    build:
+      context: ./rds_exporter
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    ports:
+      - "9042:9042"
+    networks:
+      - mvs
+
 volumes:
   static_volume:
   build_folder:

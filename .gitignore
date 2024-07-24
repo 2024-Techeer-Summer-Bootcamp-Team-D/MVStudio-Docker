@@ -4,3 +4,9 @@ venv
 certbot
 *.tmpl
 *.db
+.envrc
+/.idea/
+config.yml
+bin/
+coverage.txt
+.env
