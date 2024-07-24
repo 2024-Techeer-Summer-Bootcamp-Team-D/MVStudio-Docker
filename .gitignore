@@ -2,3 +2,5 @@
 *.log
 venv
 certbot
+*.tmpl
+*.db

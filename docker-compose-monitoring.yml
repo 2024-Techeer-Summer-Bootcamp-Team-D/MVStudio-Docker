@@ -1,0 +1,268 @@
+version: '3'
+
+services:
+#  db:
+#    image: mysql:8.0
+#    container_name: MVStudio-MySQL
+#    restart: always
+#    volumes:
+#      - db_data:/var/lib/mysql
+#    environment:
+#      MYSQL_ROOT_PASSWORD: xlaeldlqslek
+#      MYSQL_DATABASE: mvstudio
+#      MYSQL_USER: mvstudio_user
+#      MYSQL_PASSWORD: user_password
+#    ports:
+#      - "3300:3306"
+#    networks:
+#      - mvs
+
+  redis:
+    image: redis:6
+    ports:
+      - '6379:6379'
+    networks:
+      - mvs
+
+  redis-exporter: #서비스 이름
+    image: oliver006/redis_exporter:latest # 이미지
+    container_name: redis_exporter
+    environment:
+      - REDIS_ADDR=redis:6379 # 레디스 주소. 여기로 데이터를 받아옵니다. <host_ip>:<port>
+    ports:
+      - "9121:9121" #포트 9121 매핑
+    networks:
+      - mvs #프로메테우스, redis, 등등과 같은 네트워크
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+      - '15692:15692'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ['CMD', 'rabbitmqctl', 'status']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mvs
+
+  celery-worker:
+    build:
+      context: ./MVStudio-Backend
+    ports:
+      - '5555:5555'
+    depends_on:
+      - rabbitmq
+      - redis
+    networks:
+      - mvs
+    command: >
+      sh -c "
+            celery -A config worker --loglevel=info --concurrency=2 -Q celery -n worker_1_@%h &
+            celery -A config worker --loglevel=info --concurrency=2 -Q music_queue -n worker_2_@%h &
+            celery -A config worker --loglevel=info --concurrency=10 -Q video_queue -n worker_3_@%h &
+            celery -A config worker --loglevel=info --concurrency=2 -Q final_queue -n worker_4_@%h &
+            celery -A config flower --port=5555 --broker=$CELERY_BROKER_URL --broker-api=http://guest:guest@rabbitmq:15672/api/"
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+
+  celery-beat:
+    build:
+      context: ./MVStudio-Backend
+    command: celery -A config beat --loglevel=info
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - mvs
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - '9200:9200'
+    user: '1000:1000' # 비루트 사용자로 설정
+    command: >
+      sh -c "elasticsearch-plugin install analysis-nori &&
+             bin/elasticsearch"
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -s http://localhost:9200/_cluster/health | grep -vq ''"status":"red"''',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mvs
+
+  backend:
+    container_name: MVStudio-Backend
+    build:
+      context: ./MVStudio-Backend
+    volumes:
+      - static_volume:/MVStudio-Backend/static
+      - ./MVStudio-Backend:/MVStudio-Backend
+    ports:
+      - '8000:8000'
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+#      db:
+#        condition: service_started
+    networks:
+      - mvs
+    restart: always
+    command: >
+      sh -c "
+            python manage.py makemigrations &&
+            python manage.py makemigrations member &&
+            python manage.py makemigrations music_videos &&
+            python manage.py migrate &&
+            python manage.py search_index --create &&
+            python manage.py search_index --rebuild -f&&
+            gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
+
+  frontend:
+    container_name: MVStudio-Frontend
+    build:
+      context: ./MVStudio-Frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./MVStudio-Frontend/:/MVStudio-Frontend
+      - build_folder:/MVStudio-Frontend/dist
+      - ./MVStudio-Frontend/node_modules/:/MVStudio-Frontend/node_modules
+    depends_on:
+      - backend
+    tty: true
+
+  nginx:
+    container_name: MVStudio-Nginx
+    build:
+      context: ./nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - build_folder:/var/www/frontend
+      - ./nginx/logs:/var/log/nginx
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - mvs
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: MVStudio-Nginx-exporter
+    ports:
+      - "9113:9113"
+    command: --nginx.scrape-uri=http://nginx:80/stub_status
+    depends_on:
+      - nginx
+    networks:
+      - mvs
+
+  certbot:
+    container_name: certbot
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt #nginx컨테이너에 certbot컨테이너 연결
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - nginx
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: MVStudio-Prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml #추가된 부분
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - mvs
+
+  grafana:
+    image: grafana/grafana:9.5.20
+    container_name: MVStudio-Grafana
+    volumes:
+      - ./grafana:/etc/grafana/provisioning
+      - ./grafana/data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - mvs
+
+  cadvisor: #서비스 이름
+    image: gcr.io/cadvisor/cadvisor:v0.49.1 #이미지
+    container_name: MVStudio-Cadvisor
+    ports:
+      - "8080:8080" #포트 8080 매핑
+    volumes:
+      - /:/rootfs:ro #읽기 전용 데이터 - 루트 파일 시스템
+      - /var/run:/var/run:rw #읽기 & 쓰기 - 런타임 데이터
+      - /sys:/sys:ro  #읽기 전용 데이터 - 커널, 하드웨어, 드라이버 정보 등등
+      - /var/lib/docker/:/var/lib/docker:ro #읽기 전용 데이터 - 도커 정보 데이터
+    networks:
+      - mvs #같은 네트워크
+
+  node_exporter: #서비스 이름
+    image: quay.io/prometheus/node-exporter:v1.8.1 #이미지
+    container_name: MVStudio-node_exporter
+    ports:
+      - "9100:9100" #포트 9100 매핑
+    command:
+      - '--path.rootfs=/host' #루트 파일 시스템을 볼륨에 설정한 host/로 설정
+    restart: unless-stopped #멈추면 다시 시작
+    volumes:
+      - '/proc:/host/proc:ro'
+      - '/sys:/host/sys:ro'
+      - '/:/host:ro'
+    networks:
+      - mvs #같은 네트워크
+
+  alertmanager: #이미지
+    image: prom/alertmanager:main
+    container_name: alertmanager
+    ports:
+      - "9093:9093" #포트 9093 매핑
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml #설정파일 볼륨 추가
+      - ./alertmanager/tmp:/data/ #데이터 담기 전용
+    networks:
+      - mvs #같은 네트워크
+    command: --config.file=/etc/alertmanager/alertmanager.yml --log.level=debug #설정파일 설정
+
+volumes:
+  static_volume:
+  build_folder:
+  es_data:
+#  db_data:
+
+networks:
+  mvs:
