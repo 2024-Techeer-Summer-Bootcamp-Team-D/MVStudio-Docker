@@ -1,0 +1,108 @@
+version: '3'
+
+services:
+  redis-exporter: #서비스 이름
+    image: oliver006/redis_exporter:latest # 이미지
+    container_name: redis_exporter
+    environment:
+      - REDIS_ADDR=redis:6379 # 레디스 주소. 여기로 데이터를 받아옵니다. <host_ip>:<port>
+    ports:
+      - "9121:9121" #포트 9121 매핑
+    networks:
+      - mvs #프로메테우스, redis, 등등과 같은 네트워크
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: MVStudio-Nginx-exporter
+    ports:
+      - "9113:9113"
+    command: --nginx.scrape-uri=http://nginx:80/stub_status
+    depends_on:
+      - nginx
+    networks:
+      - mvs
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: MVStudio-Prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml #추가된 부분
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - mvs
+
+  grafana:
+    image: grafana/grafana:9.5.20
+    container_name: MVStudio-Grafana
+    volumes:
+      - ./grafana:/etc/grafana/provisioning
+      - ./grafana/data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - mvs
+
+  cadvisor: #서비스 이름
+    image: gcr.io/cadvisor/cadvisor:v0.49.1 #이미지
+    container_name: MVStudio-Cadvisor
+    ports:
+      - "8080:8080" #포트 8080 매핑
+    volumes:
+      - /:/rootfs:ro #읽기 전용 데이터 - 루트 파일 시스템
+      - /var/run:/var/run:rw #읽기 & 쓰기 - 런타임 데이터
+      - /sys:/sys:ro  #읽기 전용 데이터 - 커널, 하드웨어, 드라이버 정보 등등
+      - /var/lib/docker/:/var/lib/docker:ro #읽기 전용 데이터 - 도커 정보 데이터
+    networks:
+      - mvs #같은 네트워크
+
+  node_exporter: #서비스 이름
+    image: quay.io/prometheus/node-exporter:v1.8.1 #이미지
+    container_name: MVStudio-node_exporter
+    ports:
+      - "9100:9100" #포트 9100 매핑
+    command:
+      - '--path.rootfs=/host' #루트 파일 시스템을 볼륨에 설정한 host/로 설정
+    restart: unless-stopped #멈추면 다시 시작
+    volumes:
+      - '/proc:/host/proc:ro'
+      - '/sys:/host/sys:ro'
+      - '/:/host:ro'
+    networks:
+      - mvs #같은 네트워크
+
+  alertmanager: #이미지
+    image: prom/alertmanager:main
+    container_name: alertmanager
+    ports:
+      - "9093:9093" #포트 9093 매핑
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml #설정파일 볼륨 추가
+      - ./alertmanager/tmp:/data/ #데이터 담기 전용
+    networks:
+      - mvs #같은 네트워크
+    command: --config.file=/etc/alertmanager/alertmanager.yml --log.level=debug #설정파일 설정
+
+#  rds-exporter:
+#    container_name: MVStudio-rds-exporter
+#    build:
+#      context: ./rds_exporter
+#    environment:
+#      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+#      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+#    ports:
+#      - "9042:9042"
+#    networks:
+#      - mvs
+
+volumes:
+  static_volume:
+  build_folder:
+  es_data:
+#  db_data:
+
+networks:
+  mvs:
