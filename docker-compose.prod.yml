@@ -1,0 +1,156 @@
+version: '3'
+
+services:
+#  db:
+#    image: mysql:8.0
+#    container_name: MVStudio-MySQL
+#    restart: always
+#    volumes:
+#      - db_data:/var/lib/mysql
+#    environment:
+#      MYSQL_ROOT_PASSWORD: xlaeldlqslek
+#      MYSQL_DATABASE: mvstudio
+#      MYSQL_USER: mvstudio_user
+#      MYSQL_PASSWORD: user_password
+#    ports:
+#      - "3300:3306"
+#    networks:
+#      - mvs
+
+  redis:
+    image: redis:6
+    ports:
+      - '6379:6379'
+    networks:
+      - mvs
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+      - '15692:15692'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ['CMD', 'rabbitmqctl', 'status']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mvs
+
+  celery-worker:
+    build:
+      context: ./MVStudio-Backend
+    ports:
+      - '5555:5555'
+    depends_on:
+      - rabbitmq
+      - redis
+    networks:
+      - mvs
+    command: >
+      sh -c "
+            celery -A config worker --loglevel=info --concurrency=2 -Q celery -n worker_1_@%h &
+            celery -A config worker --loglevel=info --concurrency=2 -Q music_queue -n worker_2_@%h &
+            celery -A config worker --loglevel=info --concurrency=10 -Q video_queue -n worker_3_@%h &
+            celery -A config worker --loglevel=info --concurrency=2 -Q final_queue -n worker_4_@%h &
+            celery -A config flower --port=5555 --broker=$CELERY_BROKER_URL --broker-api=http://guest:guest@rabbitmq:15672/api/"
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+
+  celery-beat:
+    build:
+      context: ./MVStudio-Backend
+    command: celery -A config beat --loglevel=info
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - mvs
+
+  backend:
+    container_name: MVStudio-Backend
+    build:
+      context: ./MVStudio-Backend
+    volumes:
+      - static_volume:/MVStudio-Backend/static
+      - ./MVStudio-Backend:/MVStudio-Backend
+    ports:
+      - '8000:8000'
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+#      elasticsearch:
+#        condition: service_healthy
+#      db:
+#        condition: service_started
+    networks:
+      - mvs
+      - elk
+
+    restart: always
+    command: >
+      sh -c "
+            python manage.py makemigrations &&
+            python manage.py makemigrations member &&
+            python manage.py makemigrations music_videos &&
+            python manage.py migrate &&
+            python manage.py search_index --rebuild -f&&
+            gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
+
+  frontend:
+    container_name: MVStudio-Frontend
+    build:
+      context: ./MVStudio-Frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./MVStudio-Frontend/:/MVStudio-Frontend
+      - build_folder:/MVStudio-Frontend/dist
+      - ./MVStudio-Frontend/node_modules/:/MVStudio-Frontend/node_modules
+    depends_on:
+      - backend
+    tty: true
+
+  nginx:
+    container_name: MVStudio-Nginx
+    build:
+      context: ./nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - build_folder:/var/www/frontend
+      - ./nginx/logs:/var/log/nginx
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - mvs
+      - elk
+
+  certbot:
+    container_name: certbot
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt #nginx컨테이너에 certbot컨테이너 연결
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - nginx
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  static_volume:
+  build_folder:
+#  db_data:
+
+networks:
+  mvs:
+  elk:
