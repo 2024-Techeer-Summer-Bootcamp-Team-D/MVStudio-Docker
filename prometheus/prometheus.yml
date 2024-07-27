@@ -22,7 +22,7 @@ scrape_configs:
       - targets: [ 'nginx-exporter:9113' ] #<서비스_이름>:<포트>
   - job_name: 'celery-data' #job 이름
     static_configs:
-      - targets: [ 'celery-worker:5555' ] #<서비스_이름>:<포트>
+      - targets: [ 'celery:5555' ] #<서비스_이름>:<포트>
   - job_name: 'rabbitmq-data' #job 이름
     static_configs:
       - targets: [ 'rabbitmq:15692' ] #<서비스_이름>:<포트>
