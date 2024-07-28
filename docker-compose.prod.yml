@@ -29,6 +29,7 @@ services:
     ports:
       - '5672:5672'
       - '15672:15672'
+      - '15692:15692'
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -70,37 +71,8 @@ services:
     networks:
       - mvs
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
-    environment:
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-    ports:
-      - '9200:9200'
-    user: '1000:1000' # 비루트 사용자로 설정
-    command: >
-      sh -c "elasticsearch-plugin install analysis-nori &&
-             bin/elasticsearch"
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'curl -s http://localhost:9200/_cluster/health | grep -vq ''"status":"red"''',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - mvs
-
-  backend-blue:
-    container_name: MVStudio-Backend-blue
+  backend:
+    container_name: MVStudio-Backend
     build:
       context: ./MVStudio-Backend
     volumes:
@@ -113,46 +85,14 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-      elasticsearch:
-        condition: service_healthy
+#      elasticsearch:
+#        condition: service_healthy
 #      db:
 #        condition: service_started
     networks:
       - mvs
-    restart: always
-    command: >
-      sh -c "
-            python manage.py makemigrations &&
-            python manage.py makemigrations member &&
-            python manage.py makemigrations music_videos &&
-            python manage.py migrate &&
-            if [ '$$INIT_INDEX' = 'false' ]; then
-                python manage.py search_index --create &&
-                export INIT_INDEX=true
-                fi &&
-            python manage.py search_index --rebuild -f&&
-            gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
+      - elk
 
-  backend-green:
-    container_name: MVStudio-Backend-green
-    build:
-      context: ./MVStudio-Backend
-    volumes:
-      - static_volume:/MVStudio-Backend/static
-      - ./MVStudio-Backend:/MVStudio-Backend
-    ports:
-      - '8001:8000'
-    depends_on:
-      redis:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
-      elasticsearch:
-        condition: service_healthy
-#      db:
-#        condition: service_started
-    networks:
-      - mvs
     restart: always
     command: >
       sh -c "
@@ -160,6 +100,7 @@ services:
             python manage.py makemigrations member &&
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
+            python manage.py search_index --create &&
             python manage.py search_index --rebuild -f&&
             gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
 
@@ -172,6 +113,8 @@ services:
       - ./MVStudio-Frontend/:/MVStudio-Frontend
       - build_folder:/MVStudio-Frontend/dist
       - ./MVStudio-Frontend/node_modules/:/MVStudio-Frontend/node_modules
+    depends_on:
+      - backend
     tty: true
 
   nginx:
@@ -188,8 +131,10 @@ services:
       - ./certbot/www:/var/www/certbot
     depends_on:
       - frontend
+      - backend
     networks:
       - mvs
+      - elk
 
   certbot:
     container_name: certbot
@@ -205,8 +150,8 @@ services:
 volumes:
   static_volume:
   build_folder:
-  es_data:
 #  db_data:
 
 networks:
   mvs:
+  elk:
