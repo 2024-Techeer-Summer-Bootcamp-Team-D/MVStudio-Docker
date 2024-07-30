@@ -1,22 +1,6 @@
 version: '3'
 
 services:
-#  db:
-#    image: mysql:8.0
-#    container_name: MVStudio-MySQL
-#    restart: always
-#    volumes:
-#      - db_data:/var/lib/mysql
-#    environment:
-#      MYSQL_ROOT_PASSWORD: xlaeldlqslek
-#      MYSQL_DATABASE: mvstudio
-#      MYSQL_USER: mvstudio_user
-#      MYSQL_PASSWORD: user_password
-#    ports:
-#      - "3300:3306"
-#    networks:
-#      - mvs
-
   redis:
     image: redis:6
     ports:
@@ -149,8 +133,6 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_healthy
-#      db:
-#        condition: service_started
     networks:
       - mvs
     restart: always
@@ -163,17 +145,6 @@ services:
             python manage.py search_index --rebuild -f&&
             gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
 
-  frontend:
-    container_name: MVStudio-Frontend
-    build:
-      context: ./MVStudio-Frontend
-      dockerfile: Dockerfile
-    volumes:
-      - ./MVStudio-Frontend/:/MVStudio-Frontend
-      - build_folder:/MVStudio-Frontend/dist
-      - ./MVStudio-Frontend/node_modules/:/MVStudio-Frontend/node_modules
-    tty: true
-
   nginx:
     container_name: MVStudio-Nginx
     build:
@@ -182,12 +153,10 @@ services:
       - '80:80'
       - '443:443'
     volumes:
-      - build_folder:/var/www/frontend
+      - ./MVStudio-Frontend/dist:/var/www/frontend
       - ./nginx/logs:/var/log/nginx
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-    depends_on:
-      - frontend
     networks:
       - mvs
 
@@ -203,10 +172,8 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
-  static_volume:
   build_folder:
   es_data:
-#  db_data:
 
 networks:
   mvs:
