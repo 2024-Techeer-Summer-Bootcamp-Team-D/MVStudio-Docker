@@ -47,7 +47,7 @@ services:
     networks:
       - mvs
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=your_password
+      - GF_SECURITY_ADMIN_PASSWORD=${ELASTIC_PASSWORD:-}
   cadvisor: #서비스 이름
     image: gcr.io/cadvisor/cadvisor:v0.49.1 #이미지
     container_name: MVStudio-Cadvisor
