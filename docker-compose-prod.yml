@@ -123,7 +123,7 @@ services:
     volumes:
       - ./MVStudio-Backend:/MVStudio-Backend
     ports:
-      - '8001:8000'
+      - '8001:8001'
     depends_on:
       redis:
         condition: service_started
@@ -141,7 +141,7 @@ services:
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
             python manage.py search_index --rebuild -f&&
-            gunicorn --bind 0.0.0.0:8000 config.wsgi:application -w 2"
+            gunicorn --bind 0.0.0.0:8001 config.wsgi:application -w 2"
 
   nginx:
     container_name: MVStudio-Nginx
