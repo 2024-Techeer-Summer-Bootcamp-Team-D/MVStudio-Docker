@@ -1,6 +1,21 @@
 version: '3'
 
 services:
+#  db:
+#    image: mysql:8.0
+#    container_name: MVStudio-MySQL
+#    restart: always
+#    volumes:
+#      - db_data:/var/lib/mysql
+#    environment:
+#      MYSQL_ROOT_PASSWORD: xlaeldlqslek
+#      MYSQL_DATABASE: mvstudio
+#      MYSQL_USER: mvstudio_user
+#      MYSQL_PASSWORD: user_password
+#    ports:
+#      - "3300:3306"
+#    networks:
+#      - mvs
   redis:
     image: redis:6
     ports:
@@ -88,7 +103,6 @@ services:
     build:
       context: ./MVStudio-Backend
     volumes:
-      - static_volume:/MVStudio-Backend/static
       - ./MVStudio-Backend:/MVStudio-Backend
     ports:
       - '8000:8000'
@@ -108,13 +122,14 @@ services:
             python manage.py makemigrations member &&
             python manage.py makemigrations music_videos &&
             python manage.py migrate &&
-            python manage.py migrate --fake &&
-            python manage.py search_index --create &&
+            if [ '$$INIT_INDEX' = 'false' ]; then
+                python manage.py search_index --create &&
+                export INIT_INDEX=true
+                fi &&
             python manage.py search_index --rebuild -f&&
             python manage.py runserver 0.0.0.0:8000"
 
 volumes:
-  static_volume:
   build_folder:
   es_data:
 
