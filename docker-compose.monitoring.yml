@@ -37,6 +37,7 @@ services:
 
   grafana:
     image: grafana/grafana:9.5.20
+    user: "472:472"
     container_name: MVStudio-Grafana
     volumes:
       - ./grafana:/etc/grafana/provisioning
@@ -45,7 +46,8 @@ services:
       - "3000:3000"
     networks:
       - mvs
-
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=your_password
   cadvisor: #서비스 이름
     image: gcr.io/cadvisor/cadvisor:v0.49.1 #이미지
     container_name: MVStudio-Cadvisor
