@@ -36,7 +36,7 @@ services:
       - mvs
     command: >
       sh -c "
-            celery -A config worker --loglevel=info --concurrency=2 -n worker_1_@%h &
+            celery -A config worker --loglevel=info --concurrency=2 -Q default -n worker_1_@%h &
             celery -A config worker --loglevel=info --concurrency=2 -Q music_queue -n worker_2_@%h &
             celery -A config worker --loglevel=info --concurrency=10 -Q video_queue -n worker_3_@%h &
             celery -A config worker --loglevel=info --concurrency=2 -Q final_queue -n worker_4_@%h &
